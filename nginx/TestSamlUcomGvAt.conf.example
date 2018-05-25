@@ -1,0 +1,42 @@
+  upstream proxy1TestPvGvAt {
+    server 10.1.1.53:8080;
+  }
+
+  server {
+    listen 8080;
+    #listen 8443 ssl;
+
+    server_name test.saml.ucom.gv.at;
+    location / {
+      proxy_set_header Host $host; #no need unless backend services uses vhost
+      proxy_set_header X-Forwarded-Host $host;  
+      #proxy_set_header X-Forwarded-Port 443;    #no need if default port
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_set_header X-Forwarded-Server $host;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_pass http://proxy1TestPvGvAt;
+      #include naxsi_enable.conf;
+      ##LearningMode;
+
+   }
+
+    location /.well-known {   # letsencrypt certbot  
+      root /var/www/letsencrypt/test.saml.ucom.gv.at;
+      allow all;
+    }
+
+    #ssl_certificate /etc/letsencrypt/live/test.saml.ucom.gv.at/fullchain.pem;
+    #ssl_certificate_key /etc/letsencrypt/live/test.saml.ucom.gv.at/privkey.pem;
+
+    include url_deny.conf;
+    location ~* php$  { deny all; access_log off; log_not_found off; }
+  }
+
+# === certbot scripting: change server to listen on non-ssl port ===
+# run *within* the NGINX container:
+# fqdn=test.saml.ucom.gv.at
+# mkdir -p /var/www/letsencrypt/$fqdn/.well-known
+# use --test-cert option to avoid a 1 hour lockout after 5 failed attempts
+# certbot certonly -a webroot --webroot-path=/var/www/letsencrypt/$fqdn/ -d $fqdn
+# activate ssl on server (listen + certs)

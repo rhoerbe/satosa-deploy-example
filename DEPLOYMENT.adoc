@@ -1,0 +1,65 @@
+= Deployment Dokumentation
+
+== Instanz und Artefakte
+
+|===
+|SP | Proxy-FQDN@VM | Image | dscripts | comment
+|ucom.gv.at | samlproxy.ucom.gv.at@xserv21520 | jenkinetics/satosa:prod> | dscripts conf.sh |
+|test.ucom.gv.at | samlproxy-test.ucom.gv.at@xserv21520 | jenkinetics/satosa:test |  conf53.sh |
+|rocketchat.test.portalverbund.gv.at_sp.xml@af1 | proxy1.test.portalverbund.gv.at@nc9 | rhoerbe/satosa:dev | conf54.sh |
+|sp5TestPortalverbundGvAt | proxy5.test.portalverbund.gv.at@nc9 | Image | conf55.sh | 
+
+
+|===
+
+
+
+== Build - Test - Deploy
+
+1. Build/Test in Entwicklung -> Wenn fertig commit & tag in Github
+2. Build mit Jenkins auf kal2 -> push image auf hub.docker.io
+3. Image pull auf xserv21520
+4. Run container, manueller Test -> weiter wenn freigegeben
+5. Untag jenkinetics/satosa:prod, tag jenkinetics/satosa:test as jenkinetics/satosa:prod
+6. run prod container
+
+
+
+=== Verwendete Server
+
+kal2: kal2.identinetics.intern (Rainer Hörbe)
+nc9: netcup9.hoerbe.at (Rainer Hörbe)
+xserv21520: Internex (Internex)
+af1: server1.felder-edv.at (Armin Felder)
+
+
+=== Proxy in IDE starten (DEV)
+
+Um die Requests auf den Servier in der Pycharm IDE auf kal1 umzuleiten werden folgende Weiterleitungen aufgebaut:
+nginx@02nginx@nc9 ->  nc9:8300
+ssh remote tunnel@kal1 (nc9:8300 -> kal1:8000)
+
+
+Der Nginx Proxy@nc9 leitet requests auf proxy1 auf den Docker Host weiter (dafür gibt es eine Firewall Regel):
+Snippet aus  /etc/nginx/server.d/proxy1TestPortalverbundGvAt.conf:
+
+  upstream proxy1TestPvGvAt {
+    server 46.38.250.228:8000;   # docker host, forwarded to IDE
+  }
+
+Tunnel (forward server port auf dockernet@nc9):
+
+    ssh  -N -R 8300:10.1.1.99:8000 nc9
+
+
+
+Pycharm/project structure: mark SATOSA/src as Source
+
+Pycharm run config:
+
+- script: /home/r2h2/devl/python/rhoerbe/SATOSA/scripts/start_proxy.py
+- args: -b0.0.0.0:8000 -t 900 satosa.wsgi:app
+- Workingdir: /home/r2h2/devl/python/rhoerbe/SATOSA/config_ucom_54
+- project interpreter: satose venv
+
+

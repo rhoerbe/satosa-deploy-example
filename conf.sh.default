@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+
+main() {
+    SCRIPTDIR=$(cd $(dirname $BASH_SOURCE[0]) && pwd)
+    source $SCRIPTDIR/dscripts/conf_lib.sh  $@         # load library functions
+    configlib_version=2  # compatible version of conf_lib.sh
+    check_version $configlib_version
+    # do_not_build $@ # uncomment this line to always pull/load image
+    init_sudo
+    _set_volume_root
+    _set_image_and_container_name
+    _set_users
+    _set_buildargs
+    _set_run_args
+}
+
+
+_set_volume_root() {
+    # container volumes mounted to host paths, or symlinks to docker volumes
+    DOCKERVOL_SHORT='/dv'
+    DOCKERLOG_SHORT='/dl'
+    if [[ "$TRAVIS" == "true" ]] || [[ ! -z ${JENKINS_HOME+x} ]]; then
+        DOCKERVOL_SHORT='./dv';
+        DOCKERLOG_SHORT='./dl';
+    fi
+    mkdir -p $DOCKERVOL_SHORT $DOCKERLOG_SHORT
+    DOCKER_VOLUME_ROOT='/var/lib/docker/volumes'  # hard coded - check for your config if applicable!
+    export DOCKERFILE_DIR='SATOSA'
+}
+
+
+_set_image_and_container_name() {
+    # IMGID qualifies image, container, user and IP adddress; this is helpful for managing
+    # processes on the docker host etc.
+    IMGID='53'
+    PROJSHORT='satosa'
+    SERVICEDESCRIPTION=samlproxy.ucom.gv.at
+    export IMAGENAME="jenkinetics/${PROJSHORT}"
+    export CONTAINERNAME="${IMGID}${PROJSHORT}"
+    export DOCKER_REGISTRY=''  # blank for index.docker.io
+}
+
+
+_set_users() {
+    export CONTAINERUSER="$PROJSHORT${IMGID}"   # group and user to run container
+    export CONTAINERUID="3430${IMGID}"     # gid and uid for CONTAINERUSER
+    export START_AS_ROOT=      # 'True' (e.g. for apache to fall back to www user)
+}
+
+
+_set_buildargs() {
+    export BUILDARGS="
+        --build-arg USERNAME=$CONTAINERUSER
+        --build-arg UID=$CONTAINERUID
+    "
+}
+
+
+_set_run_args() {
+    LOGPURGEFILES='/var/log/httpd/* /var/log/shibboleth/*'
+    # unless using --net=host port 8000 should be kept and mapped to whatever is desired outside
+    export ENVSETTINGS="
+        -e PROXY_PORT=8000
+    "
+    export STARTCMD=''  # set to override image default
+}
+
+
+create_intercontainer_network() {
+    export NETWORKSETTINGS="
+        --net=host
+    "
+}
+
+
+setup_vol_mapping() {
+    # Create docker volume (-> map_docker_volume) or map a host dir (-> map_host_directory)
+    # In both cases create a shortcut in the shortcut directory (DOCKERVOL_SHORT, DOCKERLOG_SHORT)
+    mode=$1  # create (used by run.sh)/list (used by manage.sh)
+    export VOLLIST=''
+    export VOLMAPPING=''
+    # create container user on docker host (optional - for better process visibility with host tools)
+    create_user $CONTAINERUSER $CONTAINERUID
+
+    # Hint: it is good practice to export each VOLUME in the Dockerfile
+    map_docker_volume $mode "${CONTAINERNAME}.etc"  '/opt/satosa/etc'  'Z' $DOCKERVOL_SHORT
+    #map_docker_volume $mode "${CONTAINERNAME}.etc"  '/opt/satosa/etc'  'Z' $DOCKERVOL_SHORT
+    export VOLMAPPING="/opt/saml-proxy/data-test/etc:/opt/satosa/etc:Z"
+}
+
+
+container_status() {
+    $sudo docker ps | head -1
+    $sudo docker ps --all | egrep $CONTAINERNAME\$
+    $sudo docker exec -it $CONTAINERNAME /status.sh
+}
+
+
+main $@

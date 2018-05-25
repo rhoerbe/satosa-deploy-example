@@ -1,0 +1,122 @@
+# UcomGvAt-saml
+
+Rocketchat + SAML Proxy für Anbindung von ucom.gv.at an das BKA Portal in Test- und Prod-Zone
+
+Dieses Repo enthält die Konfiguration und Dokumentation.
+Submodule dscripts wird für Docker config/build/run verwendet.
+Submodule SATOSA ist die Proxy Software.
+
+
+## Installation mit Docker
+
+    # Checkout
+    git clone https://github.com/rhoerbe/TestUcomGvAt
+    git submodule update --init
+    cd SATOSA && git checkout rh_dev && cd ..
+    
+    # Build image
+    cp conf.sh.default conf.sh
+    ./dscripts/build.sh
+
+## Konfiguration
+
+Zwischen dem BKA SAML IDP (a.k.a "BAK Stammportal mit PVP2-S-Profil") und dem Rocket.chat Server 
+(test.ucom.gv.at) wird ein SAML-Proxy (test.saml.ucom.gv.at ) installiert, der aus der Sicht des 
+BKA IDPs der Service Provider ist.
+
+In der Terminologie des SAML-Proxy ist der BKA IDP das Backend und der Rocket.chat SP das Frontend.
+
+Test- und Prod laufen vom gleichen Docker Image, nur die Konfiguration ist verschieden.
+Docker Container, Volumes und User sind durch Nummern unterschieden:
+ 01 = PRODUKTIV
+ 53 = TEST
+ 54 = DEV
+ 
+Im Folgenden wird in den Beispielen immer 53 verwendet.
+
+### NGINX HTTPS-Proxy für SAML-Proxy erstellen
+
+Siehe Beispiel in nginx/
+
+Internet Proxy PORT: 
+ 8000 = PRODUKTIV
+ 8080 = TEST
+
+
+
+### Default Konfiguration kopieren
+
+    ./dscripts/run.sh -ip bash
+    # Weiter in einer anderen Shell
+    source conf.sh
+    docker cp config_ucom/* $$CONTAINERNAME:$CONTAINERNAME.etc/ 
+
+
+### Signaturschlüssel erzeugen bzw. importieren
+
+Folgende Schlüssel müssen erzeugt werden:
+
+* Proxy/Backend Signing Key (Zertifikat wird via Metadaten an Portalverbund Metadatenfeed exportiert)
+* Proxy/Frontend Signing Key (Zertifikat wird in https://test.ucom.gv.at/admin/SAML im Feld 
+  "Benutzerdefiniertes Zertifikat" eingegtragen: PEM-Format, ohne -----BEGIN/END CERTIFICATE-----)
+* Mit metadata_testPortalverbundGvAt_crt.pem wird indirekt die Authentizität des BKA-IDPs geprüft.
+
+Die im Repo vorhandene metadata.key/metadata.crt wird vom SAML-Proxy benötigt, werden in diesem  
+Use Case aber nirgends überprüft und sind daher nicht sicherheitsrelevant.
+
+    ./dscripts/run.sh -ip bash      # inplicitly creates docker volume
+    cd /opt/satosa/etc/keys
+    ../scripts/create_cert.sh -n frontend 
+    ../scripts/create_cert.sh -n backend 
+    
+Bei einem Produktivsystem sind noch die Variablen STATE_ENCRYPTION_KEY und USER_ID_HASH_SALT in 
+proxy_conf.yml durch einen lokal erzeugte Zufallswert zu ersetzen.
+
+Die pkcs8-formatierten Keys werden hier nicht benötigt und können gelöscht werden.
+
+### Start des Containers in eine Shell
+ 
+Um den Container zu starten um Zugriffsrechte etc zu prüfen wird der Container mit einer 
+Shell aufgerufen:
+
+    ./dscripts/run.sh -ip -n53 bash
+
+### Konfiguration für den SAML-Proxy 
+
+Unter config_ucom ist die Konfiguration für test.ucom.gv.at bereits vorbereitet. Die Daten in 
+dem Verzeichnis sind in das Docker Volume zu kopieren, das auf /opt/satosa/etc im Container gemappt 
+ist. Das Docker Volume wird beim ersten Aufruf mit run.sh erstellt, und liegt dann im Notmalfall 
+unter /var/lib/docker/volumes/<volumename>/_data.
+
+Für das Deployment in der Produktivzone sind die FQDNs anzupassen. 
+
+
+### SAML Metadaten für den Portalverbund erstellen und registrieren
+
+Der SAML-Proxy wird im Container mit /start.sh gestartet. Bei jedem Start werden die Metadaten für
+das Frontend und Backend erzeugt -> backend.xml und frontend.xml. Diese sind beim Einrichten des 
+Service im Metadatenfeed zu registrieren, siehe https://www.test.portalverbund.gv.at/how-to-SP.html
+
+
+### Proxy Server im Betrieb 
+
+    # Start im Hintergrund mit auto-restart
+    ./dscripts/run.sh -n53   
+    
+    # Status Abfrage
+    echo 'CONTAINER       ID             SERVICE      STATUS   PORTS' 
+    sudo docker ps --format '{{.Names}}!{{.ID}}!{{.Label "x.service"}}!{{.Status}}'|sort|column -t -s !
+    
+    # Logfile
+    /opt/saml-proxy/TestUcomGvAt-saml/dscripts/manage.sh -n01 logs  # Der Proxy loggt auf stdout/stderr
+
+Anmerkung: In diser Konfiguration verwenden die Docker Container den Netzwerkstack des Docker Hosts. 
+Dadurch ist here keine Isolation gegeben. Sollten noch andere Container auf der VM betrieben werden,
+könnte diese Isolation auch eingerichtet werden.
+
+
+### Service Provider beim BKA-IDP freischalten
+
+Die in plugins/frontends/saml2_frontend.xml konfigurierte EntityID muss im BKA IDP vom
+zuständigen Administrator (Hr. Glock) freigeschaltet werden.
+

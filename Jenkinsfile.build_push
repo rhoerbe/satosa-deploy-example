@@ -1,0 +1,30 @@
+pipeline {
+    agent any
+    stages {
+        stage('Build') {
+            steps {
+                sh '''
+                    echo 'Build image'
+                    ln -sf conf.sh.default conf53.sh
+                    ./dscripts/build.sh -p -n53 -t test
+                '''
+            }
+        }
+        stage('Push to docker.io') {
+            steps {
+                // requires Credentials Binding Plugin:
+                withCredentials([usernamePassword(credentialsId: 'hub.docker.com', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                    sh '''
+                        echo "docker login"
+                        echo "$USERNAME/$PASSWORD"
+                        sudo docker login -u $USERNAME -p $PASSWORD
+                    '''
+                }
+                sh '''
+                    echo "pushing"
+                    ./dscripts/manage.sh -n53 push
+                '''
+            }
+        }
+    }
+}

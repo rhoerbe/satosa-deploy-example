@@ -1,0 +1,33 @@
+module: satosa.backends.saml2.SAMLBackend
+name: Saml2
+config:
+  attribute_profile: pvp_egovtoken
+  sp_config:
+    key_file: keys/backend.key
+    cert_file: keys/backend.crt
+    organization: {display_name: osAlliance, name: osAlliance, url: 'https://www.osalliance.com/'}
+    contact_person:
+    - {contact_type: technical, email_address: rh_testfed_pv_at@mail.hoerbe.at, given_name: Technical}
+    - {contact_type: support, email_address: rh_testfed_pv_at@mail.hoerbe.at, given_name: Support}
+
+    metadata:
+      #local: [metadata/metadata_testPortalverbundGvAt.xml]
+      remote: [
+        {
+          #url: 'http://mdfeed.test.portalverbund.gv.at/entities/https.__stp.entw.portal.bka.gv.at_stdportal-idp_portalverbund.gv.at.xml', # single IDP
+          url: 'http://mdfeed.test.portalverbund.gv.at/metadata.xml',
+          cert: 'keys/metadata_testPortalverbundGvAt_crt.pem'
+        }]
+
+    entityid: https://proxy1.test.portalverbund.gv.at/idp
+    service:
+      sp:
+        allow_unsolicited: true
+        endpoints:
+          assertion_consumer_service:
+          - [<base_url>/<name>/acs/post, 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST']
+          - [<base_url>/<name>/acs/redirect, 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect']
+          discovery_response:
+          - [<base_url>/<name>/disco, 'urn:oasis:names:tc:SAML:profiles:SSO:idp-discovery-protocol']
+        name_id_format: 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent'
+  disco_srv: https://disco.test.portalverbund.gv.at/role/idp.ds
